@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kubedemoapp
+  labels:
+    app: kubedemoapp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kubedemoapp
+  template:
+    metadata:
+      labels:
+        app: kubedemoapp
+    spec:
+      containers:
+        - name: kubedemoapp
+          image: zuhasana/week8devops:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 5000
