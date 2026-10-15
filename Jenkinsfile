@@ -11,15 +11,7 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                withCredentials([
-                    usernamePassword(
-                        credentialsId: 'dockerhub-creds',
-                        usernameVariable: 'DOCKER_USER',
-                        passwordVariable: 'DOCKER_PASS'
-                    )
-                ]) {
-                    bat 'docker build -t %DOCKER_USER%/kubedemoapp:latest .'
-                }
+                bat 'docker build -t zuhasana/kubedemoapp:latest .'
             }
         }
 
@@ -33,7 +25,7 @@ pipeline {
                     )
                 ]) {
                     bat 'echo %DOCKER_PASS%| docker login -u %DOCKER_USER% --password-stdin'
-                    bat 'docker push %DOCKER_USER%/kubedemoapp:latest'
+                    bat 'docker push zuhasana/kubedemoapp:latest'
                     bat 'docker logout'
                 }
             }
@@ -41,25 +33,40 @@ pipeline {
 
         stage('Deploy to Kubernetes') {
             steps {
-                withCredentials([
-                    usernamePassword(
-                        credentialsId: 'dockerhub-creds',
-                        usernameVariable: 'DOCKER_USER',
-                        passwordVariable: 'DOCKER_PASS'
-                    )
-                ]) {
-                    powershell '''
-                    (Get-Content k8s/deployment.yaml -Raw).Replace(
-                        "DOCKERHUB_USERNAME",
-                        $env:DOCKER_USER
-                    ) | Set-Content k8s/deployment.yaml
-                    '''
+                powershell '''
+                    $ErrorActionPreference = "Stop"
 
-                    bat 'kubectl apply -f k8s/'
-                    bat 'kubectl rollout status deployment/kubedemoapp --timeout=120s'
-                    bat 'kubectl get pods'
-                    bat 'kubectl get services'
-                }
+                    $source = "k8s/deployment.yaml"
+                    $outputDir = "k8s-rendered"
+
+                    New-Item -ItemType Directory -Force -Path $outputDir |
+                        Out-Null
+
+                    $content = Get-Content $source -Raw
+
+                    $content = $content.Replace(
+                        "DOCKERHUB_USERNAME",
+                        "zuhasana"
+                    )
+
+                    Set-Content `
+                        -Path "$outputDir/deployment.yaml" `
+                        -Value $content `
+                        -Encoding utf8
+
+                    Get-ChildItem "k8s" -File |
+                        Where-Object {
+                            $_.Extension -in ".yaml", ".yml" -and
+                            $_.Name -ne "deployment.yaml"
+                        } |
+                        Copy-Item -Destination $outputDir -Force
+                '''
+
+                bat 'kubectl apply -f k8s-rendered/'
+                bat 'kubectl set image deployment/kubedemoapp kubedemoapp=zuhasana/kubedemoapp:latest'
+                bat 'kubectl rollout status deployment/kubedemoapp --timeout=120s'
+                bat 'kubectl get pods'
+                bat 'kubectl get services'
             }
         }
     }
